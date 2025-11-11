@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <title>Afspraken — Pet Sitting</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="/static/css/style.css" rel="stylesheet" />
+  <style>
+    :root {
+      --bd:#e5e7eb; --muted:#64748b; --ink:#0f172a; --ink-weak:#334155;
+      --accent:#0f172a; --bg-soft:#f8fafc;
+    }
+    .skip-link{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
+    .skip-link:focus{position:static;width:auto;height:auto;padding:.5rem .75rem;background:#fff;border:1px solid var(--bd);border-radius:.5rem}
+    .grid-2{display:grid;gap:1.25rem;grid-template-columns:1fr}
+    @media (min-width:900px){.grid-2{grid-template-columns:1fr 1fr}}
+    .card{background:#fff;border:1px solid var(--bd);border-radius:.75rem;padding:1rem}
+    .card h2{margin:0 0 .25rem 0;font-size:1.1rem;color:var(--ink)}
+    .subtle{margin:0 0 .75rem 0;font-size:.9rem;color:var(--muted)}
+    .toolbar{display:flex;align-items:center;justify-content:space-between;gap:.75rem;margin-bottom:.5rem}
+    .toolbar .left,.toolbar .right{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+    .btn{appearance:none;border:1px solid var(--bd);background:#fff;color:var(--ink);border-radius:.5rem;padding:.4rem .7rem;font-size:.875rem;line-height:1;cursor:pointer}
+    .btn:hover{background:var(--bg-soft)}
+    .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+    .btn.icon{display:inline-flex;align-items:center;gap:.4rem}
+    .badge{display:inline-block;font-size:.75rem;background:var(--bg-soft);border:1px solid var(--bd);color:var(--ink-weak);border-radius:999px;padding:.15rem .5rem}
+    .skeleton{border-radius:.5rem;background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 37%,#f1f5f9 63%);background-size:400% 100%;animation:shimmer 1.2s ease-in-out infinite;height:44px}
+    @keyframes shimmer{0%{background-position:100% 0}100%{background-position:-100% 0}}
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:.5rem;border-bottom:1px solid var(--bd);text-align:left;font-size:.9rem}
+    th{color:var(--muted);font-weight:600}
+    .actions{display:flex;gap:.5rem}
+    .pill{display:inline-block;padding:.15rem .5rem;border:1px solid var(--bd);border-radius:999px;font-size:.75rem;color:var(--ink-weak)}
+  </style>
+</head>
+
+<body class="bg-slate-50 text-slate-900">
+  <!-- Vroege guard: direct naar login als er geen token is -->
+  <script>
+    (function () {
+      try {
+        var token = localStorage.getItem('ps_access_token');
+        if (!token || token === 'null' || token === '""') {
+          var here = (location.pathname || '') + (location.search || '') + (location.hash || '');
+          location.replace('/pages/login.html?next=' + encodeURIComponent(here));
+        }
+      } catch (_) {
+        var here = (location.pathname || '') + (location.search || '') + (location.hash || '');
+        location.replace('/pages/login.html?next=' + encodeURIComponent(here));
+      }
+    })();
+  </script>
+
+  <!-- Topbar (exact als Home) -->
+  <header class="sticky top-0 z-40 bg-white border-b border-slate-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6">
+      <div class="h-16 flex items-center justify-between">
+        <nav class="flex items-center gap-6">
+          <a href="/pages/home.html" class="text-sm text-slate-600 hover:text-slate-900">Home</a>
+          <a href="/pages/pets.html" class="text-sm text-slate-600 hover:text-slate-900">Pets</a>
+          <a href="/pages/appointments.html" class="text-sm font-semibold text-blue-600">Afspraken</a>
+        </nav>
+        <div class="flex items-center gap-4">
+          <span class="text-sm text-slate-600">Ingelogd als <strong data-user class="text-slate-900"></strong></span>
+          <a href="/pages/login.html" data-logout class="text-sm text-slate-600 hover:text-slate-900">Uitloggen</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Zelfde main container-classes als Home -->
+  <main id="main" class="max-w-7xl mx-auto px-4 sm:px-6 py-8" role="main">
+    <header class="mb-8">
+      <h1 class="text-2xl sm:text-3xl font-bold">Afspraken</h1>
+      <p class="text-sm text-slate-600 mt-1">Maak een nieuwe afspraak aan of beheer bestaande afspraken.</p>
+    </header>
+
+    <div id="page-status" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-6" aria-label="Afspraken beheer">
+      <div class="rounded-lg bg-white border border-slate-200 p-4" role="region" aria-labelledby="sec-new">
+        <h2 id="sec-new" class="text-base font-semibold">Nieuwe afspraak</h2>
+        <p class="text-sm text-slate-600 mt-1">Kies een huisdier en plan een datum/tijd. Je kunt later altijd aanpassen.</p>
+        <div id="appt-form" class="mt-4"></div>
+      </div>
+
+      <div class="rounded-lg bg-white border border-slate-200 p-4" role="region" aria-labelledby="sec-overview">
+        <div class="flex items-center justify-between border-b border-slate-200 pb-3 mb-4" aria-label="Overzicht acties">
+          <div class="flex items-center gap-3">
+            <h2 id="sec-overview" class="text-base font-semibold m-0">Overzicht</h2>
+            <span id="last-updated" class="text-xs bg-slate-50 border border-slate-200 text-slate-700 rounded-full px-2 py-0.5" title="Laatst vernieuwd">—</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" class="inline-flex items-center gap-2 rounded-md ring-1 ring-slate-300 text-slate-800 px-3 py-2 text-sm hover:bg-slate-100" id="btn-refresh" title="Vernieuwen">
+              <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.9 6h-2.06A6 6 0 1 1 12 6c1.3 0 2.5.42 3.47 1.13L13 10h7V3l-2.35 2.35z"/></svg>
+              Vernieuwen
+            </button>
+            <button type="button" class="inline-flex items-center gap-2 rounded-md ring-1 ring-slate-300 text-slate-800 px-3 py-2 text-sm hover:bg-slate-100" id="btn-print" title="Afdrukken">
+              <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 8h-1V3H6v5H5c-1.66 0-3 1.34-3 3v5h4v4h12v-4h4v-5c0-1.66-1.34-3-3-3M8 5h8v3H8zm8 14H8v-5h8zm4-4h-2v-3H6v3H4v-3c0-.55.45-1 1-1h14c.55 0 1 .45 1 1z"/></svg>
+              Printen
+            </button>
+          </div>
+        </div>
+
+        <div id="appt-list">
+          <div class="skeleton h-11" aria-hidden="true"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module">
+    // ============ Auth-guard (robuust, geen JSON.parse op token) ============
+    (function () {
+      try {
+        var t = localStorage.getItem('ps_access_token');
+        if (!t || t === 'null' || t === '""') {
+          var next = encodeURIComponent(location.pathname + location.search + location.hash);
+          location.replace('/pages/login.html?next=' + next);
+        }
+      } catch (_) {
+        var next = encodeURIComponent(location.pathname + location.search + location.hash);
+        location.replace('/pages/login.html?next=' + next);
+      }
+    })();
+
+    // ============ Helpers ============
+    const API_ORIGIN = window.API_ORIGIN || 'http://localhost:8000';
+    const apiUrl = (path) => `${API_ORIGIN}${path}`;
+    function readToken() {
+      const raw = localStorage.getItem('ps_access_token');
+      if (!raw || raw === 'null' || raw === '""') return null;
+      try { return JSON.parse(raw); } catch { return raw; }
+    }
+    function authHeaders(headers={}) {
+      const h = new Headers(headers);
+      if (!h.has('Accept')) h.set('Accept','application/json');
+      if (!h.has('Content-Type')) h.set('Content-Type','application/json');
+      const tok = readToken();
+      if (tok) h.set('Authorization', `Bearer ${tok}`);
+      return h;
+    }
+    async function fetchJSON(path, init={}) {
+      const res = await fetch(apiUrl(path), init);
+      const text = await res.text();
+      const data = text ? (()=>{ try{return JSON.parse(text);}catch{return text;} })() : null;
+      if (!res.ok) {
+        const msg = (data && data.message) || (Array.isArray(data?.detail)&&data.detail[0]?.msg) || (typeof data==='string'?data:`Request faalde (${res.status})`);
+        throw new Error(msg);
+      }
+      return data;
+    }
+    function escapeHtml(s){return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+    function timeNowBadge(el){
+      const d=new Date(), hh=String(d.getHours()).padStart(2,'0'), mm=String(d.getMinutes()).padStart(2,'0');
+      el.textContent = `Vernieuwd ${hh}:${mm}`;
+    }
+
+    // ============ Fallback Toast ============
+    function createToast(){
+      const id='toast-box';
+      function ensure(){let el=document.getElementById(id); if(!el){el=document.createElement('div'); el.id=id; el.style.position='fixed'; el.style.top='1rem'; el.style.right='1rem'; el.style.display='grid'; el.style.gap='.5rem'; el.style.zIndex='9999'; document.body.appendChild(el);} return el;}
+      return function toast(msg, type='info'){
+        const box=ensure();
+        const n=document.createElement('div');
+        n.style.padding='.5rem .75rem'; n.style.borderRadius='.5rem'; n.style.color='#fff';
+        n.style.background = type==='error' ? '#b91c1c' : (type==='success' ? '#065f46' : '#0f172a');
+        n.textContent=msg;
+        box.appendChild(n); setTimeout(()=>n.remove(), 3000);
+      };
+    }
+    const toast = createToast();
+
+    // ============ Probeer officiële modules, anders fallback ============
+    async function safeImport(path, fallback){ try{ return await import(path); } catch(e){ console.warn('Kon module niet laden:', path, e); return fallback?.() ?? {}; } }
+
+    const { initApp } = await safeImport('/static/js/app.js', () => ({ initApp: async ()=>{} }));
+    await initApp({ protect: true });
+
+    // Naam tonen (best effort)
+    (async () => {
+      const badge = document.querySelector('[data-user]');
+      try {
+        const cached = JSON.parse(localStorage.getItem('ps_user') || 'null');
+        if (cached) { badge.textContent = cached.name || cached.full_name || cached.username || cached.email || 'Gebruiker'; return; }
+        const me = await fetchJSON('/api/v1/auth/me', { headers: authHeaders() });
+        localStorage.setItem('ps_user', JSON.stringify(me));
+        badge.textContent = me.name || me.full_name || me.username || me.email || 'Gebruiker';
+      } catch { badge.textContent = 'Gebruiker'; }
+    })();
+
+    // Logout
+    document.addEventListener('click', async (e) => {
+      const trg = e.target.closest?.('[data-logout]');
+      if (!trg) return;
+      e.preventDefault();
+      try {
+        // best effort server-side
+        await fetchJSON('/api/v1/auth/logout', { method:'POST', headers: authHeaders() }).catch(()=>null);
+      } finally {
+        // local clear
+        ['ps_access_token','ps_refresh_token','ps_user','access_token','refresh_token'].forEach(k=>localStorage.removeItem(k));
+        sessionStorage.removeItem('ps_access_token'); sessionStorage.removeItem('ps_refresh_token');
+        localStorage.setItem('ps_logout_broadcast', String(Date.now()));
+        location.replace('/pages/login.html');
+      }
+    }, { capture:true });
+
+    // ============ Data bronnen (fallback) ============
+    const petsApi = await safeImport('/static/js/api/pets.js', () => ({
+      listPets: async ({limit=200,offset=0}={}) => {
+        const q = new URLSearchParams({ limit:String(limit), offset:String(offset) });
+        return fetchJSON(`/api/v1/pets?${q.toString()}`, { headers: authHeaders() });
+      }
+    }));
+
+    const apptApi = await safeImport('/static/js/api/appointments.js', () => ({
+      listAppointments: async ({ pet_id, date_from, date_to, limit=50, offset=0 }={}) => {
+        const p = new URLSearchParams();
+        if (pet_id!=null && pet_id!=='') p.set('pet_id', String(pet_id));
+        if (date_from) p.set('date_from', String(date_from));
+        if (date_to) p.set('date_to', String(date_to));
+        p.set('limit', String(limit)); p.set('offset', String(offset));
+        return fetchJSON(`/api/v1/appointments?${p.toString()}`, { headers: authHeaders() });
+      },
+      createAppointment: async (payload) => fetchJSON('/api/v1/appointments', { method:'POST', headers: authHeaders(), body: JSON.stringify(payload) }),
+      deleteAppointment: async (id) => fetchJSON(`/api/v1/appointments/${encodeURIComponent(id)}`, { method:'DELETE', headers: authHeaders() })
+    }));
+
+    const { AppointmentForm } = await safeImport('/static/js/components/AppointmentForm.js', () => ({
+      AppointmentForm: ({ pets=[], onSaved }={}) => {
+        const root = document.createElement('form');
+        root.className = 'space-y-3';
+        const opts = pets.map(p => `<option value="${String(p.id)}">${escapeHtml(p.name)}${p.breed? ' ('+escapeHtml(p.breed)+')':''}</option>`).join('');
+        root.innerHTML = `
+          <div>
+            <label class="subtle">Huisdier</label>
+            <select name="pet_id" required class="w-full">${opts || '<option value="">— geen pets gevonden —</option>'}</select>
+          </div>
+          <div>
+            <label class="subtle">Oppas</label>
+            <input name="sitter_name" required class="w-full" />
+          </div>
+          <div style="display:grid;gap:.5rem;grid-template-columns:1fr 1fr">
+            <div>
+              <label class="subtle">Datum</label>
+              <input type="date" name="sitting_date" required class="w-full" />
+            </div>
+            <div>
+              <label class="subtle">Tijd</label>
+              <input type="time" name="sitting_time" required class="w-full" />
+            </div>
+          </div>
+          <div>
+            <label class="subtle">Duur (minuten)</label>
+            <input type="number" min="1" step="1" name="duration_minutes" required class="w-full" />
+          </div>
+          <div><button class="btn primary" type="submit">Opslaan</button></div>
+        `;
+        let submitting = false;
+        root.addEventListener('submit', async (e) => {
+          e.preventDefault(); if (submitting) return; submitting = true;
+          const btn = root.querySelector('button[type="submit"]'); const orig = btn.textContent; btn.textContent='Opslaan…'; btn.disabled=true;
+          const fd = new FormData(root);
+          const payload = {
+            pet_id: Number(fd.get('pet_id')),
+            sitter_name: String(fd.get('sitter_name')||'').trim(),
+            sitting_date: String(fd.get('sitting_date')||'').trim(),
+            sitting_time: String(fd.get('sitting_time')||'').trim(),
+            duration_minutes: Number(fd.get('duration_minutes')||'0'),
+          };
+          try {
+            if (!payload.pet_id) throw new Error('Kies een huisdier.');
+            if (!payload.sitter_name) throw new Error('Oppas is verplicht.');
+            if (!payload.sitting_date) throw new Error('Datum is verplicht.');
+            if (!payload.sitting_time) throw new Error('Tijd is verplicht.');
+            if (!payload.duration_minutes || payload.duration_minutes < 1) throw new Error('Duur moet > 0 zijn.');
+            await apptApi.createAppointment(payload);
+            onSaved?.();
+          } catch (err) {
+            toast(err?.message || 'Opslaan mislukt', 'error');
+          } finally {
+            btn.textContent = orig; btn.disabled = false; submitting = false;
+          }
+        });
+        return root;
+      }
+    }));
+
+    const { AppointmentList } = await safeImport('/static/js/components/AppointmentList.js', () => ({
+      AppointmentList: ({ mount, getPetsQuick }={}) => {
+        const wrap = mount || document.createElement('div');
+        wrap.innerHTML = '';
+        const table = document.createElement('table');
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th>ID</th><th>Huisdier</th><th>Oppas</th><th>Datum</th><th>Tijd</th><th>Duur</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        `;
+        const tbody = table.querySelector('tbody');
+        wrap.appendChild(table);
+
+        function render(rows) {
+          tbody.innerHTML = '';
+          if (!rows.length) {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td'); td.colSpan = 7; td.textContent = 'Nog geen afspraken.'; td.style.color='#64748b';
+            tr.appendChild(td); tbody.appendChild(tr); return;
+          }
+          const petMap = new Map((getPetsQuick?.()||[]).map(p => [p.id, p]));
+          for (const a of rows) {
+            const tr = document.createElement('tr');
+            const pet = petMap.get(a.pet_id);
+            tr.innerHTML = `
+              <td>${a.id}</td>
+              <td>${pet ? escapeHtml(pet.name) : ('#'+a.pet_id)}</td>
+              <td>${escapeHtml(a.sitter_name)}</td>
+              <td>${escapeHtml(a.sitting_date)}</td>
+              <td>${String(a.sitting_time||'').slice(0,8)}</td>
+              <td><span class="pill">${a.duration_minutes} min</span></td>
+              <td class="actions"><button class="btn" data-del="${a.id}">Verwijderen</button></td>
+            `;
+            tbody.appendChild(tr);
+          }
+        }
+
+        async function reload() {
+          try {
+            // desnoods zonder filters; pas aan als je backend een range vereist
+            const data = await apptApi.listAppointments({ limit: 200, offset: 0 });
+            render(Array.isArray(data) ? data : (data.items || []));
+          } catch (err) {
+            tbody.innerHTML = '';
+            const tr = document.createElement('tr');
+            const td = document.createElement('td'); td.colSpan = 7; td.textContent = err?.message || 'Laden mislukt'; td.style.color='#b91c1c';
+            tr.appendChild(td); tbody.appendChild(tr);
+          }
+        }
+
+        wrap.addEventListener('click', async (e) => {
+          const btn = e.target.closest('button[data-del]');
+          if (!btn) return;
+          const id = btn.getAttribute('data-del');
+          try {
+            await apptApi.deleteAppointment(id);
+            toast('Afspraak verwijderd','success');
+            await reload();
+          } catch (err) {
+            toast(err?.message || 'Verwijderen mislukt','error');
+          }
+        });
+
+        return { reload, mount: wrap };
+      }
+    }));
+
+    // ============ Paginalogica ============
+    const statusEl = document.querySelector('#page-status');
+    const lastUpdatedEl = document.querySelector('#last-updated');
+    const setLastUpdated = () => timeNowBadge(lastUpdatedEl);
+
+    // pets inladen voor formulier
+    let pets = [];
+    try {
+      pets = await (petsApi.listPets({ limit: 200, offset: 0 }));
+    } catch (err) {
+      toast(err?.message || 'Kon huisdieren niet laden', 'error');
+    }
+
+    // form mount
+    const form = AppointmentForm({
+      pets,
+      onSaved: async () => {
+        toast('Afspraak opgeslagen', 'success');
+        statusEl.textContent = 'Afspraak opgeslagen.';
+        await list.reload();
+        setLastUpdated();
+      }
+    });
+    document.querySelector('#appt-form').append(form);
+
+    // lijst mount
+    const list = AppointmentList({
+      mount: document.querySelector('#appt-list'),
+      getPetsQuick: () => pets
+    });
+    await list.reload();
+    setLastUpdated();
+
+    // toolbar
+    document.querySelector('#btn-refresh')?.addEventListener('click', async () => {
+      await list.reload();
+      toast('Overzicht vernieuwd', 'info');
+      statusEl.textContent = 'Overzicht vernieuwd.';
+      setLastUpdated();
+    });
+    document.querySelector('#btn-print')?.addEventListener('click', () => window.print());
+
+    // cross-tab logout
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'ps_logout_broadcast') location.replace('/pages/login.html');
+    });
+  </script>
+</body>
+</html>

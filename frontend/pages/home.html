@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <title>Home — Pet Sitting</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="../static/css/style.css" rel="stylesheet" />
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <!-- Vroege guard: direct naar login als er geen token is -->
+  <script>
+    (function () {
+      try {
+        var token = localStorage.getItem('ps_access_token');
+        if (!token || token === 'null' || token === '""') {
+          var here = (location.pathname || '') + (location.search || '') + (location.hash || '');
+          location.replace('/pages/login.html?next=' + encodeURIComponent(here));
+        }
+      } catch (_) {
+        var here = (location.pathname || '') + (location.search || '') + (location.hash || '');
+        location.replace('/pages/login.html?next=' + encodeURIComponent(here));
+      }
+    })();
+  </script>
+
+  <!-- Topbar -->
+  <header class="sticky top-0 z-40 bg-white border-b border-slate-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6">
+      <div class="h-16 flex items-center justify-between">
+        <nav class="flex items-center gap-6">
+          <a href="/pages/home.html" class="text-sm font-semibold text-blue-600">Home</a>
+          <a href="/pages/pets.html" class="text-sm text-slate-600 hover:text-slate-900">Pets</a>
+          <a href="/pages/appointments.html" class="text-sm text-slate-600 hover:text-slate-900">Afspraken</a>
+        </nav>
+        <div class="flex items-center gap-4">
+          <span class="text-sm text-slate-600">Ingelogd als <strong data-user class="text-slate-900"></strong></span>
+          <a href="/pages/login.html" data-logout class="text-sm text-slate-600 hover:text-slate-900">Uitloggen</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+    <div class="mb-8">
+      <h1 class="text-2xl sm:text-3xl font-bold">Dashboard</h1>
+      <p class="text-sm text-slate-600 mt-1">Overzicht van jouw huisdieren en afspraken.</p>
+    </div>
+
+    <!-- Quick actions -->
+    <section class="mb-8">
+      <div class="flex flex-wrap gap-3">
+        <button id="qaAddPet" class="inline-flex items-center gap-2 rounded-md bg-slate-900 text-white px-3 py-2 text-sm hover:opacity-95">
+          <span>+ Nieuw huisdier</span>
+        </button>
+        <button id="qaAddAppointment" class="inline-flex items-center gap-2 rounded-md bg-slate-900 text-white px-3 py-2 text-sm hover:opacity-95">
+          <span>+ Nieuwe afspraak</span>
+        </button>
+        <button id="qaRefresh" class="inline-flex items-center gap-2 rounded-md ring-1 ring-slate-300 text-slate-800 px-3 py-2 text-sm hover:bg-slate-100">
+          <span>Vernieuwen</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Stat cards -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+      <div class="rounded-lg bg-white border border-slate-200 p-4">
+        <div class="text-sm text-slate-500">Totaal huisdieren</div>
+        <div id="statPets" class="mt-2 text-3xl font-semibold">—</div>
+      </div>
+      <div class="rounded-lg bg-white border border-slate-200 p-4">
+        <div class="text-sm text-slate-500">Afspraken (komende 30 dagen)</div>
+        <div id="statUpcoming" class="mt-2 text-3xl font-semibold">—</div>
+      </div>
+      <div class="rounded-lg bg-white border border-slate-200 p-4">
+        <div class="text-sm text-slate-500">Laatste toegevoegd huisdier</div>
+        <div id="statLastPet" class="mt-2 text-lg font-medium truncate">—</div>
+      </div>
+      <div class="rounded-lg bg-white border border-slate-200 p-4">
+        <div class="text-sm text-slate-500">Laatste afspraak</div>
+        <div id="statLastAppt" class="mt-2 text-lg font-medium truncate">—</div>
+      </div>
+    </section>
+
+    <!-- Recent lists -->
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="rounded-lg bg-white border border-slate-200">
+        <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+          <h2 class="text-base font-semibold">Recente huisdieren</h2>
+          <a href="/pages/pets.html" class="text-sm text-blue-600">Alles bekijken →</a>
+        </div>
+        <div id="recentPets" class="divide-y divide-slate-100"></div>
+      </div>
+
+      <div class="rounded-lg bg-white border border-slate-200">
+        <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+          <h2 class="text-base font-semibold">Recente afspraken</h2>
+          <a href="/pages/appointments.html" class="text-sm text-blue-600">Alles bekijken →</a>
+        </div>
+        <div id="recentAppointments" class="divide-y divide-slate-100"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast-box"></div>
+
+  <script type="module">
+    // ====== Dynamische imports met fallbacks ======
+    async function safeImport(path, fallbackFactory) {
+      try { return await import(path); }
+      catch (e) { console.warn('Kon module niet importeren:', path, e); return fallbackFactory?.() ?? {}; }
+    }
+
+    // ====== Helpers ======
+    function getRawToken() { return localStorage.getItem('ps_access_token'); }
+    function getToken() {
+      const raw = getRawToken();
+      if (!raw || raw === 'null' || raw === '""') return null;
+      try { return JSON.parse(raw); } catch { return raw; } // ondersteunt JSON.stringify opslag
+    }
+    const API_BASE_URL = window.API_BASE_URL || 'http://localhost:8000/api/v1';
+
+    function authHeaders(extra = {}) {
+      const t = getToken();
+      const h = new Headers(extra);
+      if (!h.has('Accept')) h.set('Accept', 'application/json');
+      if (!h.has('Content-Type')) h.set('Content-Type', 'application/json');
+      if (t) h.set('Authorization', `Bearer ${t}`);
+      return h;
+    }
+
+    async function fetchJSON(url, init = {}) {
+      const res = await fetch(url, init);
+      const txt = await res.text();
+      const data = txt ? (()=>{try{return JSON.parse(txt);}catch{return txt;}})() : null;
+      if (!res.ok) {
+        const msg = (data && data.message) || (data && data.detail && data.detail[0]?.msg) || (typeof data === 'string' ? data : `Request faalde (${res.status})`);
+        throw new Error(msg);
+      }
+      return data;
+    }
+
+    // ====== Fallback API (als jouw api modules niet werken) ======
+    const FallbackAPI = {
+      listPets: async ({ limit=50, offset=0 }={}) => {
+        const q = new URLSearchParams({ limit:String(limit), offset:String(offset) }).toString();
+        return fetchJSON(`${API_BASE_URL}/pets?${q}`, { method:'GET', headers: authHeaders() });
+      },
+      listAppointments: async ({ date_from, date_to, limit=50, offset=0 }={}) => {
+        const params = new URLSearchParams();
+        if (date_from) params.set('date_from', date_from);
+        if (date_to) params.set('date_to', date_to);
+        params.set('limit', String(limit));
+        params.set('offset', String(offset));
+        return fetchJSON(`${API_BASE_URL}/appointments?${params.toString()}`, { method:'GET', headers: authHeaders() });
+      },
+      createPet: async ({ name, breed, size, birthdate }) => {
+        return fetchJSON(`${API_BASE_URL}/pets`, {
+          method:'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ name, breed, size, birthdate })
+        });
+      },
+      createAppointment: async (payload) => {
+        return fetchJSON(`${API_BASE_URL}/appointments`, {
+          method:'POST',
+          headers: authHeaders(),
+          body: JSON.stringify(payload)
+        });
+      },
+      me: async () => fetchJSON(`${API_BASE_URL}/auth/me`, { headers: authHeaders() }),
+      logout: async () => fetchJSON(`${API_BASE_URL}/auth/logout`, { method:'POST', headers: authHeaders() }).catch(()=>null)
+    };
+
+    // ====== Probeer officiële modules te importeren ======
+    const { initApp }     = await safeImport('/static/js/app.js', () => ({ initApp: async ()=>{} }));
+    const { auth }        = await safeImport('/static/js/auth.js', () => ({
+      auth: {
+        get isAuthenticated(){ return !!getToken(); },
+        get user(){ try { return JSON.parse(localStorage.getItem('ps_user')); } catch { return null; } },
+        async fetchMe(){ const me = await FallbackAPI.me(); try{localStorage.setItem('ps_user', JSON.stringify(me));}catch{} return me; },
+        async logout({ server=true, redirectTo } = {}) {
+          try {
+            // alles wissen
+            localStorage.removeItem('ps_access_token');
+            localStorage.removeItem('ps_refresh_token');
+            localStorage.removeItem('ps_user');
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            sessionStorage.removeItem('ps_access_token');
+            sessionStorage.removeItem('ps_refresh_token');
+            localStorage.setItem('ps_logout_broadcast', String(Date.now()));
+            if (server) { await FallbackAPI.logout().catch(()=>null); }
+          } finally {
+            if (redirectTo) window.location.replace(redirectTo);
+          }
+        }
+      }
+    }));
+    const petsApi         = await safeImport('/static/js/api/pets.js', () => ({ listPets: FallbackAPI.listPets, createPet: FallbackAPI.createPet }));
+    const apptsApi        = await safeImport('/static/js/api/appointments.js', () => ({ listAppointments: FallbackAPI.listAppointments, createAppointment: FallbackAPI.createAppointment }));
+    const modalMod        = await safeImport('/static/js/components/Modal.js', () => ({ modal: createFallbackModal }));
+    const toastMod        = await safeImport('/static/js/components/Toast.js', () => ({ toast: createFallbackToast() }));
+    const PetFormMod      = await safeImport('/static/js/components/PetForm.js', () => ({ PetForm: createFallbackPetForm }));
+    const AppointmentFormMod = await safeImport('/static/js/components/AppointmentForm.js', () => ({ AppointmentForm: createFallbackAppointmentForm }));
+
+    const modal = modalMod.modal || createFallbackModal();
+    const toast = toastMod.toast || createFallbackToast();
+    const { PetForm } = PetFormMod;
+    const { AppointmentForm } = AppointmentFormMod;
+    const listPets = petsApi.listPets || FallbackAPI.listPets;
+    const listAppointments = apptsApi.listAppointments || FallbackAPI.listAppointments;
+
+    // ====== Init & beveiliging ======
+    try { await initApp({ protect: true }); } catch {}
+
+    // ====== Naam tonen ======
+    const userEl = document.querySelector('[data-user]');
+    try {
+      let u = auth.user;
+      if (!u && auth.isAuthenticated) { try { u = await auth.fetchMe(); } catch {} }
+      userEl.textContent = u?.name || u?.full_name || u?.username || u?.email || 'Gebruiker';
+    } catch { userEl.textContent = 'Gebruiker'; }
+
+    // ====== Extra veilige logout ======
+    document.addEventListener('click', async (e) => {
+      const link = e.target.closest?.('[data-logout]');
+      if (!link) return;
+      e.preventDefault();
+      if (link.getAttribute('aria-disabled') === 'true') return;
+      link.setAttribute('aria-disabled', 'true');
+      link.style.pointerEvents = 'none';
+      try {
+        await auth.logout({ server: true, redirectTo: '/pages/login.html' });
+        window.location.replace('/pages/login.html');
+      } catch { window.location.replace('/pages/login.html'); }
+    }, { capture: true });
+
+    // ====== DOM refs ======
+    const elPetsCount = document.querySelector('#statPets');
+    const elUpcomingCount = document.querySelector('#statUpcoming');
+    const elLastPet = document.querySelector('#statLastPet');
+    const elLastAppt = document.querySelector('#statLastAppt');
+    const elRecentPets = document.querySelector('#recentPets');
+    const elRecentAppointments = document.querySelector('#recentAppointments');
+    const elAddPet = document.querySelector('#qaAddPet');
+    const elAddAppointment = document.querySelector('#qaAddAppointment');
+    const elRefresh = document.querySelector('#qaRefresh');
+
+    // ====== Helpers ======
+    function safeTime(t) { if (!t) return '—:—'; return String(t).slice(0, 8); }
+    function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    function renderRecentPets(items) {
+      elRecentPets.innerHTML = '';
+      if (!items.length) {
+        elRecentPets.innerHTML = '<div class="px-4 py-6 text-sm text-slate-500">Nog geen huisdieren.</div>';
+        return;
+      }
+      for (const p of items) {
+        const row = document.createElement('div');
+        row.className = 'px-4 py-4 flex items-start justify-between gap-4';
+        row.innerHTML = `
+          <div>
+            <div class="font-medium">${escapeHtml(p.name)}</div>
+            <div class="text-sm text-slate-600">${escapeHtml(p.breed)} • ${escapeHtml(p.size)} • geb. ${escapeHtml(p.birthdate)}</div>
+            <div class="text-xs text-slate-400">#${p.id} • ${p.created_at ? escapeHtml(p.created_at.slice(0,10)) : ''}</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <a class="text-sm text-blue-600" href="/pages/pets.html">Beheren</a>
+          </div>
+        `;
+        elRecentPets.append(row);
+      }
+    }
+
+    function renderRecentAppointments(items, pets) {
+      elRecentAppointments.innerHTML = '';
+      if (!items.length) {
+        elRecentAppointments.innerHTML = '<div class="px-4 py-6 text-sm text-slate-500">Nog geen afspraken.</div>';
+        return;
+      }
+      const petById = new Map((pets||[]).map(p => [p.id, p]));
+      for (const a of items) {
+        const p = petById.get(a.pet_id);
+        const row = document.createElement('div');
+        row.className = 'px-4 py-4 flex items-start justify-between gap-4';
+        row.innerHTML = `
+          <div>
+            <div class="font-medium">${p ? escapeHtml(p.name) : `#${a.pet_id}`}</div>
+            <div class="text-sm text-slate-600">${escapeHtml(a.sitter_name)}</div>
+            <div class="text-sm text-slate-600">${escapeHtml(a.sitting_date)} om ${safeTime(a.sitting_time)} • ${a.duration_minutes} min</div>
+            <div class="text-xs text-slate-400">#${a.id} • ${a.created_at ? escapeHtml(a.created_at.slice(0,10)) : ''}</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <a class="text-sm text-blue-600" href="/pages/appointments.html">Beheren</a>
+          </div>
+        `;
+        elRecentAppointments.append(row);
+      }
+    }
+
+    async function loadDashboard() {
+      try {
+        const pets = await listPets({ limit: 50, offset: 0 });
+        elPetsCount.textContent = String(pets.length);
+        if (pets.length) {
+          const last = [...pets].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))[0];
+          elLastPet.textContent = `${last.name} (${last.breed})`;
+        } else {
+          elLastPet.textContent = '—';
+        }
+        renderRecentPets(pets.slice(0, 5));
+
+        const today = new Date();
+        const in30 = new Date(today); in30.setDate(today.getDate() + 30);
+        const date_from = today.toISOString().slice(0, 10);
+        const date_to = in30.toISOString().slice(0, 10);
+
+        const appts = await listAppointments({ date_from, date_to, limit: 50, offset: 0 });
+        elUpcomingCount.textContent = String(appts.length);
+        if (appts.length) {
+          const lastA = [...appts].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))[0];
+          elLastAppt.textContent = `${lastA.sitting_date} ${safeTime(lastA.sitting_time)} • ${lastA.sitter_name}`;
+        } else {
+          elLastAppt.textContent = '—';
+        }
+        renderRecentAppointments(appts.slice(0, 5), pets);
+      } catch (err) {
+        console.error(err);
+        elPetsCount.textContent = '—';
+        elUpcomingCount.textContent = '—';
+        elLastPet.textContent = '—';
+        elLastAppt.textContent = '—';
+        elRecentPets.innerHTML = '<div class="px-4 py-6 text-sm text-slate-500">Kon lijst niet laden.</div>';
+        elRecentAppointments.innerHTML = '<div class="px-4 py-6 text-sm text-slate-500">Kon lijst niet laden.</div>';
+        toast(err?.message || 'Laden van dashboard mislukt', 'error');
+      }
+    }
+
+    // ====== Nieuw Huisdier ======
+    elAddPet.addEventListener('click', () => {
+      const m = modal({ title: 'Nieuw huisdier' });
+      // probeer jouw component; zo niet, fallback
+      let form;
+      if (typeof PetForm === 'function') {
+        form = PetForm({
+          onSaved: () => { m?.close?.(); toast('Huisdier toegevoegd', 'success'); loadDashboard(); }
+        });
+      } else {
+        form = createFallbackPetForm().PetForm({
+          onSaved: () => { m?.close?.(); toast('Huisdier toegevoegd', 'success'); loadDashboard(); }
+        });
+      }
+      if (typeof m?.setContent === 'function') m.setContent(form);
+      else if (m?.body) { m.body.innerHTML = ''; m.body.append(form); }
+    });
+
+    // ====== Nieuwe Afspraak ======
+    elAddAppointment.addEventListener('click', async () => {
+      try {
+        const pets = await listPets({ limit: 200, offset: 0 });
+        const m = modal({ title: 'Nieuwe afspraak' });
+        let form;
+        if (typeof AppointmentForm === 'function') {
+          form = AppointmentForm({
+            pets,
+            onSaved: () => { m?.close?.(); toast('Afspraak opgeslagen', 'success'); loadDashboard(); }
+          });
+        } else {
+          form = createFallbackAppointmentForm().AppointmentForm({
+            pets,
+            onSaved: () => { m?.close?.(); toast('Afspraak opgeslagen', 'success'); loadDashboard(); }
+          });
+        }
+        if (typeof m?.setContent === 'function') m.setContent(form);
+        else if (m?.body) { m.body.innerHTML = ''; m.body.append(form); }
+      } catch (err) {
+        toast(err?.message || 'Kon pets niet laden voor afspraak', 'error');
+      }
+    });
+
+    elRefresh.addEventListener('click', () => loadDashboard());
+
+    // ====== Init ======
+    loadDashboard();
+
+    // ====== Cross-tab logout sync ======
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'ps_logout_broadcast') window.location.replace('/pages/login.html');
+    });
+
+    // ====== Fallback Toast ======
+    function createFallbackToast() {
+      const boxId = 'toast-box';
+      const ensureBox = () => {
+        let el = document.getElementById(boxId);
+        if (!el) {
+          el = document.createElement('div');
+          el.id = boxId;
+          el.className = 'fixed top-4 right-4 space-y-2 z-50';
+          document.body.appendChild(el);
+        }
+        return el;
+      };
+      return function toast(msg, type='info') {
+        const el = ensureBox();
+        const item = document.createElement('div');
+        item.className = 'px-3 py-2 rounded-md shadow text-sm ' + (type==='error' ? 'bg-red-600 text-white' : type==='success' ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-white');
+        item.textContent = msg;
+        el.appendChild(item);
+        setTimeout(()=>item.remove(), 3000);
+      };
+    }
+
+    // ====== Fallback Modal ======
+    function createFallbackModal() {
+      return function modal({ title='Modal', content } = {}) {
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50';
+        const card = document.createElement('div');
+        card.className = 'w-full max-w-lg bg-white rounded-md border border-slate-200 shadow';
+        card.innerHTML = `
+          <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+            <h3 class="font-semibold">${title}</h3>
+            <button type="button" class="px-2 py-1 text-slate-500 hover:text-slate-900" data-close>✕</button>
+          </div>
+          <div class="p-4" data-body></div>
+        `;
+        overlay.appendChild(card);
+        document.body.appendChild(overlay);
+        const body = card.querySelector('[data-body]');
+        if (content) body.append(content);
+        overlay.addEventListener('click', (e)=>{ if (e.target === overlay) close(); });
+        card.querySelector('[data-close]').addEventListener('click', close);
+        function setContent(node){ body.innerHTML=''; body.append(node); }
+        function close(){ overlay.remove(); }
+        return { body, setContent, close };
+      }
+    }
+
+    // ====== Fallback PetForm ======
+    function createFallbackPetForm() {
+      return {
+        PetForm({ onSaved } = {}) {
+          const root = document.createElement('form');
+          root.className = 'space-y-4';
+          root.innerHTML = `
+            <div>
+              <label class="block text-sm font-medium mb-1">Naam</label>
+              <input name="name" type="text" required class="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400"/>
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">Ras</label>
+              <input name="breed" type="text" required class="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400"/>
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">Grootte</label>
+              <select name="size" required class="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400">
+                <option value="">— Kies —</option>
+                <option value="small">Klein</option>
+                <option value="medium">Middel</option>
+                <option value="large">Groot</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">Geboortedatum</label>
+              <input name="birthdate" type="date" required class="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400"/>
+            </div>
+            <div class="pt-2">
+              <button type="submit" class="inline-flex items-center gap-2 rounded-md bg-slate-900 text-white px-4 py-2 text-sm font-medium hover:opacity-95 disabled:opacity-60">Opslaan</button>
+            </div>
+          `;
+          let submitting = false;
+          root.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (submitting) return;
+            submitting = true;
+            const btn = root.querySelector('button[type="submit"]');
+            const orig = btn.textContent; btn.textContent = 'Opslaan…'; btn.disabled = true;
+
+            const fd = new FormData(root);
+            const name = String(fd.get('name')||'').trim();
+            const breed = String(fd.get('breed')||'').trim();
+            const size = String(fd.get('size')||'').trim();
+            const birthdate = String(fd.get('birthdate')||'').trim();
+
+            try {
+              if (!name || !breed || !size || !birthdate) throw new Error('Vul alle velden in.');
+              if (!['small','medium','large'].includes(size)) throw new Error('Grootte moet small/medium/large zijn.');
+              await FallbackAPI.createPet({ name, breed, size, birthdate });
+              onSaved?.();
+            } catch (err) {
+              toast(err?.message || 'Opslaan mislukt', 'error');
+            } finally {
+              btn.textContent = orig; btn.disabled = false; submitting = false;
+            }
+          });
+          return root;
+        }
+      };
+    }
+
+    // ====== Fallback AppointmentForm ======
+    function createFallbackAppointmentForm() {
+      return {
+        AppointmentForm({ pets=[], onSaved } = {}) {
+          const root = document.createElement('form');
+          const options = pets.map(p => `<option value="${String(p.id)}">${(p.name||'') + (p.breed? ' ('+p.breed+')':'' )}</option>`).join('');
+          root.className = 'space-y-4';
+          root.innerHTML = `
+            <div>
+              <label class="block text-sm font-medium mb-1">Huisdier</label>
+              <select name="pet_id" required class="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400">
+                ${options || '<option value="">— Geen pets gevonden —</option>'}
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">Oppas</label>
+              <input name="sitter_name" type="text" required class="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400"/>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-sm font-medium mb-1">Datum</label>
+                <input name="sitting_date" type="date" required class="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400"/>
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-1">Tijd</label>
+                <input name="sitting_time" type="time" required class="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400"/>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">Duur (minuten)</label>
+              <input name="duration_minutes" type="number" min="1" step="1" required class="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400"/>
+            </div>
+            <div class="pt-2">
+              <button type="submit" class="inline-flex items-center gap-2 rounded-md bg-slate-900 text-white px-4 py-2 text-sm font-medium hover:opacity-95 disabled:opacity-60">Opslaan</button>
+            </div>
+          `;
+          let submitting = false;
+          root.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (submitting) return;
+            submitting = true;
+            const btn = root.querySelector('button[type="submit"]');
+            const orig = btn.textContent; btn.textContent = 'Opslaan…'; btn.disabled = true;
+
+            const fd = new FormData(root);
+            const payload = {
+              pet_id: Number(fd.get('pet_id')),
+              sitter_name: String(fd.get('sitter_name')||'').trim(),
+              sitting_date: String(fd.get('sitting_date')||'').trim(),
+              sitting_time: String(fd.get('sitting_time')||'').trim(),
+              duration_minutes: Number(fd.get('duration_minutes'))
+            };
+
+            try {
+              if (!payload.pet_id) throw new Error('Kies een huisdier.');
+              if (!payload.sitter_name) throw new Error('Oppas is verplicht.');
+              if (!payload.sitting_date) throw new Error('Datum is verplicht.');
+              if (!payload.sitting_time) throw new Error('Tijd is verplicht.');
+              if (!payload.duration_minutes || payload.duration_minutes < 1) throw new Error('Duur moet > 0 zijn.');
+              await FallbackAPI.createAppointment(payload);
+              onSaved?.();
+            } catch (err) {
+              toast(err?.message || 'Opslaan mislukt', 'error');
+            } finally {
+              btn.textContent = orig; btn.disabled = false; submitting = false;
+            }
+          });
+          return root;
+        }
+      };
+    }
+
+    // ====== Globale error -> toast ======
+    window.addEventListener('error', (e) => {
+      try { toast(e?.error?.message || e?.message || 'Onbekende fout', 'error'); } catch {}
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      try { toast(e?.reason?.message || 'Onbekende fout', 'error'); } catch {}
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <title>Inloggen — Pet Sitting</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="/static/css/style.css" rel="stylesheet" />
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-900">
+  <main class="min-h-screen grid place-items-center p-4">
+    <div class="w-full max-w-md">
+      <div class="mb-6 text-center">
+        <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-900 text-white text-xl font-bold">PS</div>
+        <h1 class="mt-3 text-2xl font-bold">Welkom terug</h1>
+        <p class="text-sm text-slate-600">Log in om door te gaan</p>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+        <div class="flex mb-6 border-b border-slate-200">
+          <button id="tabLogin" type="button" class="flex-1 px-3 py-2 text-sm font-medium border-b-2 border-slate-900">Inloggen</button>
+          <button id="tabRegister" type="button" class="flex-1 px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-900 border-b-2 border-transparent">Registreren</button>
+        </div>
+
+        <div id="alert" class="hidden mb-4 rounded-md border border-red-300 bg-red-50 text-red-800 text-sm px-3 py-2"></div>
+
+        <form id="loginForm" class="space-y-4" novalidate>
+          <div>
+            <label class="block text-sm font-medium mb-1">Gebruikersnaam</label>
+            <input type="text" name="username" required autocomplete="username" class="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Wachtwoord</label>
+            <div class="relative">
+              <input id="loginPassword" type="password" name="password" required autocomplete="current-password" class="w-full rounded-md border border-slate-300 px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              <button type="button" data-toggle-pass="#loginPassword" class="absolute inset-y-0 right-0 px-3 text-slate-500 hover:text-slate-900" aria-label="Toon/Verberg wachtwoord">👁️</button>
+            </div>
+          </div>
+          <button id="btnLogin" type="submit" class="w-full inline-flex justify-center items-center gap-2 rounded-md bg-slate-900 text-white px-4 py-2 text-sm font-medium hover:opacity-95 disabled:opacity-60">Inloggen</button>
+          <p class="text-sm text-slate-600 text-center">Nog geen account? <a href="#" id="toRegister" class="text-blue-600">Registreer</a></p>
+        </form>
+
+        <form id="registerForm" class="space-y-4 hidden" novalidate>
+          <div>
+            <label class="block text-sm font-medium mb-1">Gebruikersnaam</label>
+            <input type="text" name="username" required autocomplete="username" class="w-full rounded-md border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Wachtwoord</label>
+            <div class="relative">
+              <input id="registerPassword" type="password" name="password" required autocomplete="new-password" class="w-full rounded-md border border-slate-300 px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              <button type="button" data-toggle-pass="#registerPassword" class="absolute inset-y-0 right-0 px-3 text-slate-500 hover:text-slate-900" aria-label="Toon/Verberg wachtwoord">👁️</button>
+            </div>
+            <p class="text-xs text-slate-500 mt-1">Minimaal 6 tekens aanbevolen.</p>
+          </div>
+          <button id="btnRegister" type="submit" class="w-full inline-flex justify-center items-center gap-2 rounded-md bg-slate-900 text-white px-4 py-2 text-sm font-medium hover:opacity-95 disabled:opacity-60">Account aanmaken</button>
+          <p class="text-sm text-slate-600 text-center">Al een account? <a href="#" id="toLogin" class="text-blue-600">Inloggen</a></p>
+        </form>
+      </div>
+
+      <p class="mt-6 text-center text-xs text-slate-500">© <span id="year"></span> Pet Sitting</p>
+    </div>
+  </main>
+
+  <div id="toast-box"></div>
+
+  <script type="module">
+    import { auth } from '/static/js/auth.js';
+    import { ui, qs } from '/static/js/core.js';
+
+    const tabLogin = qs('#tabLogin');
+    const tabRegister = qs('#tabRegister');
+    const loginForm = qs('#loginForm');
+    const registerForm = qs('#registerForm');
+    const toRegister = qs('#toRegister');
+    const toLogin = qs('#toLogin');
+    const alertBox = qs('#alert');
+    const yearEl = qs('#year');
+    yearEl.textContent = String(new Date().getFullYear());
+
+    function showLogin() {
+      loginForm.classList.remove('hidden');
+      registerForm.classList.add('hidden');
+      tabLogin.classList.remove('text-slate-500','border-transparent');
+      tabLogin.classList.add('border-slate-900');
+      tabRegister.classList.add('text-slate-500','border-transparent');
+      tabRegister.classList.remove('border-slate-900');
+      clearAlert();
+    }
+
+    function showRegister() {
+      registerForm.classList.remove('hidden');
+      loginForm.classList.add('hidden');
+      tabRegister.classList.remove('text-slate-500','border-transparent');
+      tabRegister.classList.add('border-slate-900');
+      tabLogin.classList.add('text-slate-500','border-transparent');
+      tabLogin.classList.remove('border-slate-900');
+      clearAlert();
+    }
+
+    tabLogin.addEventListener('click', showLogin);
+    tabRegister.addEventListener('click', showRegister);
+    toRegister?.addEventListener('click', (e) => { e.preventDefault(); showRegister(); });
+    toLogin?.addEventListener('click', (e) => { e.preventDefault(); showLogin(); });
+
+    document.querySelectorAll('[data-toggle-pass]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const sel = btn.getAttribute('data-toggle-pass');
+        const input = document.querySelector(sel);
+        if (!input) return;
+        input.type = input.type === 'password' ? 'text' : 'password';
+      });
+    });
+
+    function setLoading(btn, isLoading) {
+      btn.disabled = !!isLoading;
+      if (isLoading) {
+        btn.dataset.originalText = btn.textContent;
+        btn.textContent = 'Even geduld…';
+      } else if (btn.dataset.originalText) {
+        btn.textContent = btn.dataset.originalText;
+        delete btn.dataset.originalText;
+      }
+    }
+
+    function showAlert(msg) {
+      alertBox.textContent = msg;
+      alertBox.classList.remove('hidden');
+    }
+
+    function clearAlert() {
+      alertBox.classList.add('hidden');
+      alertBox.textContent = '';
+    }
+
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearAlert();
+      const fd = new FormData(loginForm);
+      const username = String(fd.get('username') || '').trim();
+      const password = String(fd.get('password') || '').trim();
+      if (!username || !password) {
+        showAlert('Vul je gebruikersnaam en wachtwoord in.');
+        return;
+      }
+      const btn = qs('#btnLogin');
+      setLoading(btn, true);
+      try {
+        await auth.login({ username, password, asJson: true });
+        const next = new URLSearchParams(location.search).get('next') || '/pages/home.html';
+        window.location.assign(next);
+      } catch (err) {
+        showAlert(err?.message || 'Login mislukt');
+        ui.toast(err?.message || 'Login mislukt', 'error');
+      } finally {
+        setLoading(btn, false);
+      }
+    });
+
+    registerForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearAlert();
+      const fd = new FormData(registerForm);
+      const username = String(fd.get('username') || '').trim();
+      const password = String(fd.get('password') || '').trim();
+      if (!username || !password) {
+        showAlert('Vul een gebruikersnaam en wachtwoord in.');
+        return;
+      }
+      const btn = qs('#btnRegister');
+      setLoading(btn, true);
+      try {
+        await auth.register({ username, password });
+        if (!auth.isAuthenticated) {
+          await auth.login({ username, password, asJson: true });
+        }
+        window.location.assign('/pages/home.html');
+      } catch (err) {
+        showAlert(err?.message || 'Registratie mislukt');
+        ui.toast(err?.message || 'Registratie mislukt', 'error');
+      } finally {
+        setLoading(btn, false);
+      }
+    });
+  </script>
+</body>
+</html>
